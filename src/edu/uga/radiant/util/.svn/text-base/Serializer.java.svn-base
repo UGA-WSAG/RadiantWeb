@@ -1,0 +1,138 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+package edu.uga.radiant.util;
+
+import edu.uga.radiant.ontology.Ontologies;
+import java.io.File;
+import org.jdom.Document;
+import java.io.FileOutputStream;
+import java.io.ObjectOutputStream;
+import java.io.IOException;
+import java.io.FileInputStream;
+import java.io.ObjectInputStream;
+import org.semanticweb.owlapi.apibinding.OWLManager;
+import org.semanticweb.owlapi.model.IRI;
+import org.semanticweb.owlapi.model.OWLOntology;
+import org.semanticweb.owlapi.model.OWLOntologyManager;
+import org.semanticweb.owlapi.model.UnloadableImportException;
+
+
+/**
+ *
+ * @author Chaitu
+ */
+public class Serializer {
+
+    
+    public static void serializeObj(Ontologies obj, String file){
+        FileOutputStream fos = null;
+        ObjectOutputStream out = null;
+        try
+        {
+            fos = new FileOutputStream(file);
+            out = new ObjectOutputStream(fos);
+            out.writeObject(obj);
+            out.close();
+        }
+        catch(IOException ex)
+        {
+            ex.printStackTrace();
+        }
+    }
+    
+    /*
+     * Given the jdom dcoument Serializes the doc object
+     * 
+     * 
+     * */
+    public static void serilizeDoc(Document doc,String file){
+
+        FileOutputStream fos = null;
+        ObjectOutputStream out = null;
+        try
+        {
+            fos = new FileOutputStream(file);
+            out = new ObjectOutputStream(fos);
+            out.writeObject(doc);
+            out.close();
+        }
+        catch(IOException ex)
+        {
+            ex.printStackTrace();
+        }
+
+    }
+
+    public static Document deserializeDoc(String file){
+       Document doc = null;
+       FileInputStream fis = null;
+       ObjectInputStream in = null;
+       try
+       {
+            fis = new FileInputStream(file);
+            in = new ObjectInputStream(fis);
+            doc = (Document)in.readObject();
+            in.close();
+       }
+       catch(IOException ex)
+       {
+         ex.printStackTrace();
+       }
+       catch(ClassNotFoundException ex)
+       {
+         ex.printStackTrace();
+       }
+       return doc;
+    }
+    
+    /*
+     * testing the Serializer class
+     * 
+     * 
+     * 
+     */
+    public static void main(String[] args){
+        
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        //factory = manager.getOWLDataFactory();
+        //System.out.println("In the load ontology : "+owlpath);
+         
+        String owlpath = "/Users/Chaitu/OBI/edam_v12.owl";
+        Ontologies ontologies = new Ontologies();
+        OWLOntology ontology;
+        
+        OWLOntology ont = null;
+        try {
+            if(owlpath.indexOf("http:")>0)
+            ontology = manager.loadOntologyFromOntologyDocument(IRI.create(owlpath));//IRI.create("http://purl.obolibrary.org/obo/obi.owl"));
+            else
+            {
+                File file = new File(owlpath);
+                ontology = manager.loadOntologyFromOntologyDocument(file);//IRI.create("http://purl.obolibrary.org/obo/obi.owl"));
+                //System.out.println("After the load ontology "+ontology);
+            }
+
+            ontologies.addOntology(owlpath, ontology);
+            Serializer.serializeObj(ontologies, "/Users/Chaitu/OBI/ontology.ser");
+
+            //ontologies = manager.getOntologies();
+            //System.out.println("Ontology loaded is : "+ontology);
+            //reasoner = reasonerfactory.createNonBufferingReasoner(ontology);
+        }
+        //
+
+        catch(UnloadableImportException e){
+          System.err.println("unloadable import exp");//System.exit(0);
+          e.printStackTrace();
+        }catch(Exception e){e.printStackTrace();}
+        
+    
+        
+        
+    }
+
+
+}

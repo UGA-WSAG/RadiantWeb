@@ -1,0 +1,141 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package edu.uga.radiant.suggestion;
+
+import edu.uga.radiant.util.RadiantToolConfig;
+import edu.uga.radiant.util.Serializer;
+import edu.uga.radiant.util.SortMap;
+import edu.uga.radiant.wsdlparser.ParseWSDL;
+import java.io.File;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import javax.wsdl.Definition;
+import javax.wsdl.Message;
+import javax.wsdl.Operation;
+import org.jdom.Document;
+import org.jdom.Element;
+import org.jdom.Namespace;
+import org.semanticweb.owlapi.apibinding.OWLManager;
+import org.semanticweb.owlapi.model.OWLOntology;
+import org.semanticweb.owlapi.model.OWLOntologyCreationException;
+import org.semanticweb.owlapi.model.OWLOntologyManager;
+
+/**
+ *
+ * @author Chaitu
+ */
+public class RecommendTerms {
+    
+    private static RadiantToolConfig config = new RadiantToolConfig();
+    
+    //private ParseWSDL wsdlparser;
+    
+    public static Map<String,String> getRocommnededTerms(Definition def, OWLOntology ont){
+       Map<String,String> terms = new HashMap<String, String>();
+       String docURL = config.getWsdlUrl();
+       Document doc = Serializer.deserializeDoc(docURL);
+       ParseWSDL wsdlparser = new ParseWSDL(def,doc);
+       List<Operation> operations = wsdlparser.getAllOp();
+       for(int i=0;i<operations.size();i++){
+           
+           Operation op = operations.get(i);
+           String opName = op.getName();
+           String opDoc = op.getDocumentationElement().getTextContent();
+           Map<String, Double> term = SimpleStringMatcher.getOpSimilarity(opName, opDoc, ont);
+           String recTerm = term.keySet().iterator().next();
+           System.out.println("Term : "+opName);
+           //printTop(term,10);
+           terms.put("op:"+opName, recTerm);
+           
+           /*Message inMsg = wsdlparser.getOpInMessage(op);
+           String inMsgName = inMsg.getQName().getLocalPart();
+           List<Element> inputs = wsdlparser.getMsgChildElements(inMsg);
+           for(Element input : inputs){
+               String inputDoc = null;
+               String inputName = input.getAttributeValue("name");
+               Element annot = input.getChild("annotation", input.getNamespace());
+               if(annot!=null){
+                   Element docum = annot.getChild("documentation", input.getNamespace());
+                   if(docum != null)
+                        inputDoc = docum.getTextTrim();
+               }
+               
+               
+               Map<String,Double> inputTerms = SimpleStringMatcher.getParamSimilarity(inputName, inputDoc, ont);
+               System.out.println("Term : "+inputName);
+               //printTop(inputTerms,10);
+               terms.put("ele:"+inMsgName+inputName,inputTerms.keySet().iterator().next());
+               
+           }
+           
+           Message outMsg = wsdlparser.getOpOutMessage(op);
+           String outMsgName = outMsg.getQName().getLocalPart();
+           List<Element> outputs = wsdlparser.getMsgChildElements(outMsg);
+           for(Element output : outputs){
+               String outputDoc = null;
+               String outputName = output.getAttributeValue("name");
+               Element annot = output.getChild("annotation", output.getNamespace());
+               if(annot!=null){
+                   Element docum = annot.getChild("documentation", output.getNamespace());
+                   if(docum != null)
+                        outputDoc = docum.getTextTrim();
+               }
+               Map<String,Double> outputTerms = SimpleStringMatcher.getParamSimilarity(outputName, outputDoc, ont);
+               System.out.println("Term : "+outputName);
+               //printTop(outputTerms,10);
+               terms.put("ele:"+outMsgName+outputName,outputTerms.keySet().iterator().next());
+               
+           }*/
+       }
+       return terms;
+    }
+    
+    public static void printTop(Map<String,Double> terms, int count){
+        Iterator it = terms.keySet().iterator();
+        System.out.println("Suggestions are : ");
+        int i=0;
+        while(it.hasNext() && i < count){
+            String key = (String) it.next();
+            //int index = key.indexOf("**");
+            String[] keyparts = key.split(" - ");
+            Double score = terms.get(key);
+            System.out.println(key+" - total score : "+score);
+            /*System.out.println(keyparts[0]);
+            System.out.println(keyparts[1]);
+            System.out.println(keyparts[2]);
+            System.out.println(keyparts[3]);
+            System.out.println("TotalScore : "+score);
+            System.out.println("");*/
+            i++;
+        }
+        System.out.println();
+    }
+    
+    public static void main(String [] args) throws OWLOntologyCreationException{
+        
+        ParseWSDL parser = new ParseWSDL("/Users/Chaitu/OBI/wublast.wsdl");
+        Definition def = parser.getWsdlDef();
+        Document doc = parser.getJdomWSDLManager().getRoot().getDocument();
+        RadiantToolConfig config = new RadiantToolConfig();
+        String docURL = config.getWsdlUrl();
+        Serializer.serilizeDoc(doc, docURL);
+        
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        File file = new File("/Users/Chaitu/OBI/webService_withdescriptions.owl");
+        OWLOntology ontology = manager.loadOntologyFromOntologyDocument(file);
+        
+        Map<String, String> terms = RecommendTerms.getRocommnededTerms(def, ontology);
+        //Iterator it = terms.keySet().iterator();
+        //while(it.hasNext()){
+        //    String key = (String) it.next();
+        //    String value = terms.get(key);
+        //    System.out.println(key +" - "+ value);
+        //}
+    }
+    
+    
+}

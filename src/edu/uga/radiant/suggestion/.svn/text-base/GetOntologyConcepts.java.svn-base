@@ -1,0 +1,259 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+package edu.uga.radiant.suggestion;
+
+import org.semanticweb.owlapi.model.OWLClass;
+import org.semanticweb.owlapi.model.OWLOntology;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.List;
+import java.util.ArrayList;
+import edu.uga.radiant.util.RadiantToolConfig;
+import org.semanticweb.owlapi.model.IRI;
+import org.semanticweb.owlapi.model.OWLClassExpression;
+import org.semanticweb.owlapi.model.OWLDataFactory;
+import org.semanticweb.owlapi.model.OWLOntologyCreationException;
+import org.semanticweb.owlapi.model.OWLOntologyManager;
+import org.semanticweb.owlapi.apibinding.OWLManager;
+import java.io.File;
+import org.semanticweb.owlapi.model.OWLAnnotation;
+import org.semanticweb.owlapi.model.OWLAnnotationProperty;
+import org.semanticweb.owlapi.model.OWLLiteral;
+import org.semanticweb.owlapi.vocab.OWLRDFVocabulary;
+import java.util.Map;
+import java.util.HashMap;
+import org.semanticweb.owlapi.util.SimpleIRIMapper;
+
+/**
+ *
+ * @author Chaitu
+ */
+public class GetOntologyConcepts {
+
+    private static RadiantToolConfig conf = new RadiantToolConfig();
+
+    private static OWLOntologyManager manager;
+    
+    /** Given Ontology gets all the subclasses of an operation URI
+     * @param ont OWLOntology
+     * @returns the descendents of Operation URI(i.e uri of concept related to Web service operation) in the Ontology
+     *
+     * */
+    public static Set<OWLClass> getOperationConcetps(OWLOntology ont){
+
+        String opConceptURI = conf.getOperationConcept();
+        OWLDataFactory owlDataFactory = ont.getOWLOntologyManager().getOWLDataFactory();
+        OWLClass opConcept = owlDataFactory.getOWLClass(IRI.create(opConceptURI));
+        Set<OWLClass> conceptsList = getSubClass(opConcept,ont);//new ArrayList<OWLClass>();
+        return conceptsList;
+
+    }
+
+    /** Given Ontology gets all the subclasses of an operation URI
+     * @param ont OWLOntology
+     * @returns the descendents of Operation URI(i.e uri of concept related to Web service operation) in the Ontology
+     *
+     * */
+    public static Set<OWLClass> getParameterConcetps(OWLOntology ont){
+
+        String paramConceptURI = conf.getParameterConcept();
+        OWLDataFactory owlDataFactory = ont.getOWLOntologyManager().getOWLDataFactory();
+        OWLClass opConcept = owlDataFactory.getOWLClass(IRI.create(paramConceptURI));
+        Set<OWLClass> conceptsList = getSubClass(opConcept,ont);//new ArrayList<OWLClass>();
+        return conceptsList;
+
+    }
+
+    /**
+     * Given OWLClass and OWLOntology gives the set all descendents of that class
+     * @param cls OWLClass
+     * @param ont OWLOntology
+     * @returns the Set of descendent classes of cls
+     * */
+    public static Set<OWLClass> getSubClass(OWLClass cls,OWLOntology ont){
+
+        Set<OWLClass> subCls = new HashSet<OWLClass>();
+        List<OWLClass> localCopy = new ArrayList<OWLClass>();
+        Set<OWLOntology> ontologies = ont.getOWLOntologyManager().getOntologies();
+        for(OWLOntology o : ontologies)
+        {
+            Set<OWLClassExpression> set = cls.getSubClasses(o);
+            for(OWLClassExpression oce : set){
+                if(oce != null)
+                {
+                    OWLClass cls1 = oce.asOWLClass();
+                    Set<OWLClass> list = getSubClass(cls1,o);
+                    subCls.add(cls1);
+                    subCls.addAll(list);
+                    localCopy.add(cls1);
+                }
+            }
+        }
+        return subCls;
+    }
+
+    /**
+     * Given an OWLClass and the Ontology gets the definition of the OWLClass
+     * @param cls
+     * @param ont
+     *
+     * */
+    public String getDefinition(OWLClass cls,OWLOntology ont){
+
+        String definition=null;
+        RadiantToolConfig conf = new RadiantToolConfig();
+        String defURI = conf.getDefinitionURI();
+        OWLAnnotationProperty def = manager.getOWLDataFactory().getOWLAnnotationProperty(IRI.create(defURI));//ont.getOWLOntologyManager().getOWLDataFactory().getOWLAnnotationProperty(IRI.create(defURI));
+        OWLAnnotationProperty isdefby = manager.getOWLDataFactory().getOWLAnnotationProperty(OWLRDFVocabulary.RDFS_IS_DEFINED_BY.getIRI());//ont.getOWLOntologyManager().getOWLDataFactory().getOWLAnnotationProperty(OWLRDFVocabulary.RDFS_IS_DEFINED_BY.getIRI());
+        
+        //if(ont.containsClassInSignature(cls.getIRI()))
+        //{
+            //System.out.println(getLabel(cls,ont)+" Present in ontology");
+            for (OWLAnnotation annotation : cls.getAnnotations(ont, isdefby))
+            {
+                if (annotation.getValue() instanceof OWLLiteral) {
+                    OWLLiteral val = (OWLLiteral) annotation.getValue();
+                    if (val.hasLang("en")) {
+                        //System.out.println(cls + " -> " + val.getLiteral());
+                        definition = val.getLiteral();
+                    }
+                }
+            }
+            //System.out.println("The defintio is : "+definition);
+            if (definition == null){
+                Set<OWLAnnotation> annots = cls.getAnnotations(ont,def);
+                for(OWLAnnotation an : annots){
+                    if(an.getValue() instanceof OWLLiteral)
+                    {
+                        
+                        OWLLiteral value = (OWLLiteral) an.getValue();
+                        definition = value.getLiteral();
+                    }
+                }
+
+            }
+        //}else
+        //{
+        //    System.out.println("\n"+getLabel(cls,ont)+" Not Present in ontology");
+        //    Set<OWLOntology> onts = manager.getOntologies();
+        //    for(OWLOntology onto : onts){
+        //        if(onto.containsClassInSignature(cls.getIRI())){
+        //            System.out.println(onto);
+        //        }
+        //    }
+        //}        
+        
+//OWLRDFVocabulary.
+        //System.out.println("The label is :"+label+" "+cls.getAnnotations(ont, label));
+        return definition;
+        
+    }
+
+    /**
+     * Gets the label for the particular owlclass cls in a given OWLOntology onto
+     * @param cls OWLClass
+     * @param onto OWLOntology
+     * @return label for the OWLClass
+     */
+    public String getLabel(OWLClass cls,OWLOntology onto)
+    {
+        OWLDataFactory factory = onto.getOWLOntologyManager().getOWLDataFactory();
+        Set<OWLOntology> ontologies = onto.getOWLOntologyManager().getOntologies();
+        String value = null;
+        OWLAnnotationProperty label = factory.getOWLAnnotationProperty(OWLRDFVocabulary.RDFS_LABEL.getIRI());
+
+        Set<OWLAnnotation> ann = cls.getAnnotations(onto, label);
+        for(OWLAnnotation an : ann){
+            value = an.getValue().toString().trim();
+            break;
+        } //for
+        boolean set = false;
+        if(value == null) {
+            for(OWLOntology ont : ontologies)
+            {
+                if(ont.containsClassInSignature(cls.getIRI())){
+                    Set<OWLAnnotation> ano = cls.getAnnotations(ont,label);
+                    for(OWLAnnotation a:ano)
+                    {
+                        set = true;
+                        value = a.getValue().toString();//getAnnotationValue().toString();
+                    } //for
+
+                } //if
+
+            } //for
+            if(!set)
+                value = cls.getIRI().getFragment();//toStringID();
+        } //if
+        if(value.contains("^^xsd:string")){
+            value = value.replace("^^xsd:string","");
+        } //if
+        else
+        if (value.contains("@en")){
+            value = value.replace("@en", "");
+        } //if
+        value = value.replace("\"", "");
+        return value;
+    } //getLabel
+
+    public static void main(String [] args) throws OWLOntologyCreationException{
+
+        GetOntologyConcepts test = new GetOntologyConcepts();
+        manager = OWLManager.createOWLOntologyManager();
+        File file = new File("/Users/Chaitu/OBI/bfo11.owl");
+        SimpleIRIMapper mapper = new SimpleIRIMapper(IRI.create("http://www.ifomis.org/bfo/1.1"),IRI.create(file));
+        manager.addIRIMapper(mapper);
+        OWLOntology ont = manager.loadOntologyFromOntologyDocument(new File("/Users/Chaitu/OBI/merged-obi-comments.owl"));
+        OWLClass cls = manager.getOWLDataFactory().getOWLClass(IRI.create("http://purl.obolibrary.org/obo/IAO_0000005"));
+        Set<OWLClass> lst = test.getParameterConcetps(ont);//.getOperationConcetps(ont);
+        System.out.println("The number of classes are : "+lst.size());
+        for(OWLClass c : lst){
+            //if(ont.containsClassInSignature(c.getIRI()))
+            //{
+                System.out.println("Term : "+test.getLabel(c,ont));
+                String def = test.getDefinition(c, ont);
+                if(def==null){
+                //System.out.println(c+" : "+test.getLabel(c,ont)+" -> "+def);
+                //if (test.getLabel(c,ont).equalsIgnoreCase("obsolescence reason specification")){
+                    Set<OWLOntology> ontologies = manager.getOntologies();
+                    for(OWLOntology o : ontologies)
+                    {
+                        if(def == null){
+                            String def1 = test.getDefinition(c, o);
+                            def = def1;
+                            //System.out.println("Ontology : "+o);
+                            //System.out.println("Def 1 : "+def1);
+                //            System.out.println(c+" : "+test.getLabel(c,o)+" *-> "+def1);
+                        }
+                    }
+                    //System.out.println("checking : "+ont.containsClassInSignature(c.getIRI()));
+                    //System.exit(0);
+        //        }
+                }
+                //System.out.println(c+" : "+test.getLabel(c,ont)+" -> "+def);
+                System.out.println("Definition : "+def);
+
+            //}
+            //else
+            //{
+//                if(defin)
+//                Set<OWLOntology> ontologies = manager.getOntologies();
+//                for(OWLOntology o : ontologies){
+//                    
+//                    if(o.containsClassInSignature(c.getIRI())){
+//                        System.out.println("Ontology : "+o);
+//                        String def1 = test.getDefinition(cls, o);
+//                        System.out.println(c+" : "+test.getLabel(c,o)+" *-> "+def1);
+//                    }
+//                }
+            //}
+            //if(def!=null)
+            //System.out.println("\n"+test.getLabel(c,ont)+" -> "+def);
+            //test.getDefinition(c, ont);
+        }
+    }
+    
+}

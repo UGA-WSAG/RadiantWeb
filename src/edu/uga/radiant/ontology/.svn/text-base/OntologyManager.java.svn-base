@@ -1,0 +1,769 @@
+package edu.uga.radiant.ontology;
+
+import java.io.File;
+import java.io.IOException;
+import static java.lang.System.*;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import org.semanticweb.owlapi.apibinding.OWLManager;
+import org.semanticweb.owlapi.io.OWLXMLOntologyFormat;
+import org.semanticweb.owlapi.model.*;
+
+import uk.ac.manchester.cs.owl.owlapi.OWLDataFactoryImpl;
+import uk.ac.manchester.cs.owl.owlapi.OWLObjectUnionOfImpl;
+
+/***************************************************************************************
+ * This class is used to load OWL files or URL's into memory.  Clients of this class
+ * must handle the following classes from the OWLAPI: OWLClass, OWLDataProperty and
+ * OWLObjectProperty.
+ */
+public class OntologyManager {
+
+    /**
+     * The singleton instance of the OntologyManager class
+     */
+    private static Map<String, OntologyManager> instances = new HashMap<String, OntologyManager>();
+    
+    private static final String base = "/Users/Chaitu/OBI/";
+   
+    /**
+     * The ontology manager which is used to be load ontology(owl file).
+     */
+    private OWLOntologyManager manager;
+    /**
+     * The ontology factory which is used to get objects in ontology.
+     */
+    //private OWLDataFactory factory;
+    /**
+     * The ontology to be loaded.
+     */
+    private static OWLOntology ontology;
+    /**
+     * The HashMap for increasing the performance.
+     */
+    private HashMap<IRI, OWLClass> OwlClaz = new HashMap<IRI, OWLClass>();
+    private HashMap<IRI, ArrayList<Set<OWLClass>>> InferredSupClaz = new HashMap<IRI, ArrayList<Set<OWLClass>>>();
+    private HashMap<IRI, ArrayList<Set<OWLClass>>> InferredSubClaz = new HashMap<IRI, ArrayList<Set<OWLClass>>>();
+    private HashMap<IRI, Set<OWLDataProperty>> OwlDataProps = new HashMap<IRI, Set<OWLDataProperty>>();
+	private HashMap<IRI, Set<OWLObjectProperty>> OwlObjProps = new HashMap<IRI, Set<OWLObjectProperty>>();
+    
+    public static OntologyManager getInstance(String filename) {
+        if (!OntologyManager.instances.containsKey(filename)) try {
+            OntologyManager.instances.put(filename, new OntologyManager(filename));
+        } catch (IOException ex) {
+            Logger.getLogger(OntologyManager.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (OWLOntologyCreationException ex) {
+            Logger.getLogger(OntologyManager.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return OntologyManager.instances.get(filename);
+    } 
+    
+    public static OntologyManager getInstance(IRI DOCUMENT_IRI) {
+        if (!OntologyManager.instances.containsKey(DOCUMENT_IRI.toString())) try {
+            OntologyManager.instances.put(DOCUMENT_IRI.toString(), new OntologyManager(DOCUMENT_IRI));
+        } catch (OWLOntologyCreationException ex) {
+            Logger.getLogger(OntologyManager.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return OntologyManager.instances.get(DOCUMENT_IRI.toString());
+    } 
+    
+    /***********************************************************************************
+     * Construct an ontology loader by obtaining a OWLOntologyManager which, as
+     * the name suggests, manages ontology. An ontology is unique within an
+     * ontology manager. To load multiple copies of an ontology, multiple
+     * managers would have to be used. To parse the owl file we need a reasoner
+     * to analyze or infer the owl file. We need to construct the reasoner. For
+     * owlapi, the reasoner is incomplete. Right now, we use the HermiT
+     * reasoner.
+     * 
+     * @param String:
+     *            file path of the owl file.
+     * @throws IOException
+     */
+    public OntologyManager (String filename) throws IOException,
+            OWLOntologyCreationException {
+
+        try {
+            // Create our ontology manager in the usual way.
+            manager = OWLManager.createOWLOntologyManager();
+
+            // Create our ontology factory in the usual way.
+            //factory = manager.getOWLDataFactory();
+
+            // load ontology on local file
+            File inputOntologyFile = new File(base + filename);
+
+            // Now load the local copy
+            ontology = manager.loadOntologyFromOntologyDocument(inputOntologyFile);
+
+            // add to OwlClaz HashMap
+            for (OWLClass cls : ontology.getClassesInSignature()) {
+                OwlClaz.put(cls.getIRI(), cls);
+            }
+
+        } catch (UnsupportedOperationException exception) {
+            System.out.println("Unsupported reasoner operation.");
+        }
+
+    } // OWLDiscoveryManager Constructor
+
+    private OntologyManager (IRI DOCUMENT_IRI) throws OWLOntologyCreationException {
+        // Create our ontology manager in the usual way.
+        manager = OWLManager.createOWLOntologyManager();
+
+        // load ontology on web
+        ontology = manager.loadOntologyFromOntologyDocument(DOCUMENT_IRI);
+
+    } // OWLDiscoveryManager Constructor
+
+    /*****************************************************************************************
+     * pull out all of the classes which are referenced in the ontology And
+     * extracting the name of the concept form the URI find the ontology class
+     * whose name is the given conceptName
+     * 
+     * @param conceptName
+     *            : the concept class for searching
+     * @return OWLClass: the class which matches the input name, if not return null
+     */
+    public OWLClass getConceptClass(String iri) {
+        if (iri == null) {
+            return null;
+        }
+        if (OwlClaz.get(IRI.create(iri)) == null) {
+            return null;
+        } else {
+            return OwlClaz.get(IRI.create(iri));
+        }
+    }
+
+    /***********************************************************************************
+     * Get the OWL classes intersect each other .
+     * 
+     * @param class1
+     *            : the first OWLclass for checking intersecting.
+     * @param class2
+     *            : the second OWLclass for checking intersecting.
+     * @return boolean: if the classes intersect if it is not an owl nothing
+     */
+    public boolean areIntersecting(OWLClass class1, OWLClass class2) {
+        OWLDataFactoryImpl classfac = new OWLDataFactoryImpl();
+        Set<OWLClassExpression> set = new HashSet<OWLClassExpression>();
+        set.add(class1);
+        set.add(class2);
+        OWLObjectIntersectionOf obj = classfac.getOWLObjectIntersectionOf(set);
+        OWLAnonymousClassExpression object = (OWLAnonymousClassExpression) obj;
+        return !object.isOWLNothing();
+    }
+
+    /***********************************************************************************
+     * Get the prefix to the ontology in the parser.
+     * 
+     * @return The prefix.
+     */
+    public OWLOntology getOntology() {
+        return ontology;
+    }
+
+    /***********************************************************************************
+     * Get the classes equivalent to the class cls.
+     * 
+     * @param cls
+     *            : the class equivalent to this class.
+     * @return Set<OWLClass>: The classes equivalent to the class cls.
+     */
+    public Set<OWLClass> getEquivalentClasses(OWLClass cls) {
+        Set<OWLClass> equivs = new HashSet<OWLClass>();
+        if (cls == null) {
+            return equivs;
+        }
+        Set<OWLClassExpression> _equivs = cls.getEquivalentClasses(ontology);
+        for (OWLClassExpression cd : _equivs) {
+            if (!cd.isAnonymous()) {
+                equivs.add(cd.asOWLClass());
+            }
+        } // for 
+        return equivs;
+    } // getEquivalentClasses
+    
+
+    /**
+     * Return true if cls2 is equivalent to cls1
+     * @param cls1
+     * @param cls2
+     * @return 
+     */
+    public boolean hasEquivalentClass(OWLClass cls1, OWLClass cls2) {
+        return (getEquivalentClasses(cls1).contains(cls2));
+    }
+    
+
+    /***********************************************************************************
+     * Get the super classes of the class cls.
+     * 
+     * @param cls
+     *            the class for searching super classes.
+     * @return Set<OWLClass>: The super classes of the class cls.
+     */
+    public Set<OWLClass> getSuperClasses(OWLClass cls) {
+        //no inferred
+        Set<OWLClass> supers = new HashSet<OWLClass>();
+        if (cls == null) {
+            return supers;
+        }
+        Set<OWLClassExpression> _supers = cls.getSuperClasses(ontology);
+        if (_supers != null) {
+            for (OWLClassExpression cd : _supers) {
+                if (!cd.isAnonymous()) {
+                    supers.add(cd.asOWLClass());
+                }
+            } // for 
+        }
+        return supers;
+    } // getSuperClasses
+    
+    /**
+     * Return true if cls1 has cls2 as a super class.
+     * @param cls1
+     * @param cls2
+     * @return 
+     */
+    public boolean hasSuperClass(OWLClass cls1, OWLClass cls2) {
+        return (getSuperClasses(cls1).contains(cls2));
+    }
+
+    /***********************************************************************************
+     * Get the super classes of the class cls in hierarchy.
+     * 
+     * @param owlCls
+     *            the class for searching super classes.
+     * @return ArrayList<Set<OWLClass>>: The super classes of the class owlCls.
+     */
+    public ArrayList<Set<OWLClass>> getInferredSuperClasses(OWLClass cls) {
+    	if (InferredSupClaz.containsKey(cls.getIRI())){
+    		return InferredSupClaz.get(cls.getIRI());
+    	}else {
+    		// get every super class of outConceptClass
+            ArrayList<Set<OWLClass>> outCeptSuperClz = new ArrayList<Set<OWLClass>>();
+            Set<OWLClass> temp = getSuperClasses(cls);
+            while (temp.size() != 0) {
+                Set<OWLClass> nextLevel = new HashSet<OWLClass>();
+                for (OWLClass owlCls : temp) {
+                    Set<OWLClass> temp1 = getSuperClasses(owlCls);
+                    if (temp1.size() != 0) {
+                        Iterator<OWLClass> iterator = temp1.iterator();
+                        while (iterator.hasNext()) {
+                            nextLevel.add(iterator.next());
+                        }
+                    }
+                }
+                outCeptSuperClz.add(temp);
+                temp = nextLevel;
+            }
+            InferredSupClaz.put(cls.getIRI(), outCeptSuperClz);
+            return outCeptSuperClz;
+    	}
+    } // getInferredSuperClasses
+
+    /***********************************************************************************
+     * Get the sub classes of the class cls.
+     * 
+     * @param cls
+     *            the class for searching sub classes.
+     * @return Set<OWLClass>: The sub classes of the class cls.
+     */
+    public Set<OWLClass> getSubClasses(OWLClass cls) {
+        //no inferred		
+        Set<OWLClass> subs = new HashSet<OWLClass>();
+        if (cls == null) {
+            return subs;
+        }
+        Set<OWLClassExpression> _sub = cls.getSubClasses(ontology);
+        if (_sub != null) {
+            for (OWLClassExpression cd : _sub) {
+                if (!cd.isAnonymous()) {
+                    subs.add(cd.asOWLClass());
+                }
+            } // for 
+        }
+        return subs;
+    } // getSubClasses
+
+    /***********************************************************************************
+     * Get the sub classes of the class cls in hierarchy.
+     * 
+     * @param owlCls
+     *            the class for searching sub classes.
+     * @return ArrayList<Set<OWLClass>>: The sub classes of the class owlCls.
+     */
+    public ArrayList<Set<OWLClass>> getInferredSubClasses(OWLClass cls) {
+    	if (InferredSubClaz.containsKey(cls.getIRI())){
+    		return InferredSubClaz.get(cls.getIRI());
+    	}else {
+    		// get every super class of outConceptClass
+            ArrayList<Set<OWLClass>> outCeptSubClz = new ArrayList<Set<OWLClass>>();
+            Set<OWLClass> temp = getSubClasses(cls);
+            while (temp.size() != 0) {
+                Set<OWLClass> nextLevel = new HashSet<OWLClass>();
+                for (OWLClass owlCls : temp) {
+                    Set<OWLClass> temp1 = getSubClasses(owlCls);
+                    if (temp1.size() != 0) {
+                        Iterator<OWLClass> iterator = temp1.iterator();
+                        while (iterator.hasNext()) {
+                            nextLevel.add(iterator.next());
+                        }
+                    }
+                }
+                outCeptSubClz.add(temp);
+                temp = nextLevel;
+            }
+            InferredSubClaz.put(cls.getIRI(), outCeptSubClz);
+            return outCeptSubClz;
+    	}
+    } // getInferredSubClasses
+
+    /***********************************************************************************
+     * Get the data properties of the class cls.
+     * 
+     * @param cls
+     *            the class for searching data properties.
+     * @return Set<OWLDataProperty>: The data properties of the class cls.
+     */
+    public Set<OWLDataProperty> getDataProperties(OWLClass cls) {
+        Set<OWLDataProperty> props = new HashSet<OWLDataProperty>();
+        if (cls == null) {
+            return props;
+        }
+        if (OwlDataProps.containsKey(cls.getIRI())){
+    		return OwlDataProps.get(cls.getIRI());
+    	}else {
+    		for (OWLDataProperty p : ontology.getDataPropertiesInSignature()) {
+            	if (p.getDomains(ontology).contains(cls)) {
+                    props.add(p);
+                } // if
+            	// get inferred super classes to check OwlDataProperties
+            	for (Set<OWLClass> clz : getInferredSuperClasses(cls)) {
+            		for (OWLClass c : clz){
+            			if (p.getDomains(ontology).contains(c)) {
+                            props.add(p);
+                        } // if
+            		} // for
+            	} // for
+            } // for
+            return props;
+    	}
+    } // getDataProperties
+
+    /***********************************************************************************
+     * Get the object properties of the class cls.
+     * 
+     * @param cls
+     *            the class for searching object properties.
+     * @return Set<OWLObjectProperty>: The object properties of the class cls.
+     */
+    @SuppressWarnings("rawtypes")
+    public Set<OWLObjectProperty> getObjectProperties(OWLClass cls) {
+        Set<OWLObjectProperty> props = new HashSet<OWLObjectProperty>();
+        if (cls == null) {
+            return props;
+        }
+        if (OwlObjProps.containsKey(cls.getIRI())){
+    		return OwlObjProps.get(cls.getIRI());
+    	}else {
+    		for (OWLObjectProperty p : ontology.getObjectPropertiesInSignature()) {
+                if (p.getDomains(ontology).contains(cls)) {
+                    props.add(p);
+                } // if
+                // get inferred super classes to check OwlObjectProperties
+            	for (Set<OWLClass> clz : getInferredSuperClasses(cls)) {
+            		for (OWLClass c : clz){
+            			if (p.getDomains(ontology).contains(c)) {
+                            props.add(p);
+                        } // if
+            		} // for
+            	} // for
+            } // for
+    		// use equivalent class to get property
+            Set<OWLClassExpression> equivs = cls.getEquivalentClasses(ontology);
+            for (OWLClassExpression s1 : equivs) {
+                for (OWLClassExpression s2 : s1.asConjunctSet()) {
+                    if (s2.getClassExpressionType().getName().equalsIgnoreCase("objectmaxcardinality")) {
+                        props.add((OWLObjectProperty) ((OWLRestriction) s2).getProperty());
+                    } else if (s2.getClassExpressionType().getName().equalsIgnoreCase("objectexactcardinality")) {
+                        props.add((OWLObjectProperty) ((OWLRestriction) s2).getProperty());
+                    } else if (s2.getClassExpressionType().getName().equalsIgnoreCase("objectmincardinality")) {
+                        props.add((OWLObjectProperty) ((OWLRestriction) s2).getProperty());
+                    } else if (s2.getClassExpressionType().getName().equalsIgnoreCase("ObjectSomeValuesFrom")) {
+                        props.add((OWLObjectProperty) ((OWLRestriction) s2).getProperty());
+                    } else if (s2.getClassExpressionType().getName().equalsIgnoreCase("ObjectHasValue")) {
+                        props.add((OWLObjectProperty) ((OWLRestriction) s2).getProperty());
+                    } else if (s2.getClassExpressionType().getName().equalsIgnoreCase("ObjectSomeValuesFrom")) {
+                        props.add((OWLObjectProperty) ((OWLRestriction) s2).getProperty());
+                    } else if (s2.getClassExpressionType().getName().equalsIgnoreCase("ObjectAllValuesFrom")) {
+                        props.add((OWLObjectProperty) ((OWLRestriction) s2).getProperty());
+                    }
+                }
+            }
+            return props;
+    	}
+    } // getObjectProperties
+
+    /***********************************************************************************
+     * Check if the object properties are inverse functional
+     * 
+     * @param prop
+     *            : the OWLProperty for checking.
+     * @return boolean: if the property is inverse functional if it is not an
+     *         owl nothing
+     */
+    @SuppressWarnings("rawtypes")
+    public boolean isInverseFunctional(OWLProperty prop) {
+        if (prop.isOWLDataProperty()) {
+            return false;
+        }
+        return prop.asOWLObjectProperty().isInverseFunctional(ontology);
+    }
+
+    /***********************************************************************************
+     * Combination of both the properties set.
+     * 
+     * @param cls
+     *            the class the class for searching all Owl properties.
+     * @return Set<OWLProperty>: The set of the class that include the object
+     *         property and data property.
+     */
+    @SuppressWarnings("rawtypes")
+    public Set<OWLProperty> getProperties(OWLClass cls) {
+        Set<OWLDataProperty> data_prop = this.getDataProperties(cls);
+        Set<OWLObjectProperty> obj_prop = this.getObjectProperties(cls);
+        Set<OWLProperty> result_set = new HashSet<OWLProperty>();
+        result_set.addAll(obj_prop);
+        result_set.addAll(data_prop);
+        return result_set;
+    } // getProperties
+
+    /***********************************************************************************
+     * Get the Cardinality of instance of the class cls.
+     * 
+     * @param cls
+     *            the class for searching cardinality.
+     * @return Integer: The exact number(Cardinality) of the class.
+     */
+    @SuppressWarnings("rawtypes")
+    public int getCardinality(OWLProperty prop, OWLClass cls) {
+        int val = 0;
+        if (cls == null) {
+            return val;
+        }
+        
+        // for direct restriction
+        Set<OWLClassExpression> supers = cls.getSuperClasses(ontology);
+        for (OWLClassExpression s1 : supers) {
+            if (s1.getClassExpressionType().getName().equalsIgnoreCase("objectmaxcardinality")) {
+                if (((OWLRestriction) s1).getProperty().equals(prop)) {
+                    val = ((OWLObjectMaxCardinality) s1).getCardinality();
+                }
+            } else if (s1.getClassExpressionType().getName().equalsIgnoreCase("objectexactcardinality")) {
+                if (((OWLRestriction) s1).getProperty().equals(prop)) {
+                    val = ((OWLObjectExactCardinality) s1).getCardinality();
+                }
+            } else if (s1.getClassExpressionType().getName().equalsIgnoreCase("objectmincardinality")) {
+                if (((OWLRestriction) s1).getProperty().equals(prop)) {
+                    val = ((OWLObjectMinCardinality) s1).getCardinality();
+                }
+            }
+        }
+        if (val != 0) {
+            return val;
+        }
+
+        // for indirect restriction(equivalent class)
+        Set<OWLClassExpression> equivs = cls.getEquivalentClasses(ontology);
+        for (OWLClassExpression s1 : equivs) {
+            //out.println("   equiv OWLClassExpression = " + s1);
+            for (OWLClassExpression s2 : s1.asConjunctSet()) {
+                //out.println("      s2 = " + s2);
+                if (s2.getClassExpressionType().getName().equalsIgnoreCase("objectmaxcardinality")) {
+                    if (((OWLRestriction) s2).getProperty().equals(prop)) {
+                        val = ((OWLObjectMaxCardinality) s2).getCardinality();
+                    }
+                } else if (s2.getClassExpressionType().getName().equalsIgnoreCase("objectexactcardinality")) {
+                    if (((OWLRestriction) s2).getProperty().equals(prop)) {
+                        val = ((OWLObjectExactCardinality) s2).getCardinality();
+                    }
+                } else if (s2.getClassExpressionType().getName().equalsIgnoreCase("objectmincardinality")) {
+                    if (((OWLRestriction) s2).getProperty().equals(prop)) {
+                        val = ((OWLObjectMinCardinality) s2).getCardinality();
+                    }
+                }
+            }
+        }
+        return val;
+    } // getCardinality
+
+    /***********************************************************************************
+     * Print out all of the classes which are referenced in the ontology along
+     * with their data and object properties.
+     */
+    public void printClasses() {
+
+        for (OWLClass cls : ontology.getClassesInSignature()) {
+            out.println(cls.getIRI());
+        }
+        //Node<OWLClass> topNode = reasoner.getTopClassNode();
+        //print(topNode, reasoner, 0);
+
+    } // printClasses
+
+    /***********************************************************************************
+     * Get the domains of the object property
+     * 
+     * @param prop
+     *            the owl properties that is included by the class.
+     * @return Set<OWLClass>: The set of the class that include the object
+     *         property.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public Set<OWLClass> getDomains(OWLProperty prop) {
+        // no inferred 
+        Set<OWLClass> owl_class = new HashSet<OWLClass>();
+        Set<OWLClassExpression> owl_desc = prop.getDomains(ontology);
+        for (OWLClassExpression desc : owl_desc) {
+            if (!desc.isAnonymous()) {
+                owl_class.add(desc.asOWLClass());
+            }
+        }
+        return owl_class;
+
+    } // getDomains
+
+    /***********************************************************************************
+     * Get the range of the object properties
+     * 
+     * @param prop
+     *            the object property that is included by the class.
+     * @return Set<OWLClass>: The set of the class that include the object
+     *         property.
+     */
+	public Set<OWLClass> getRanges(OWLProperty prop) {
+        // no inferred 
+        Set<OWLClass> owl_class = new HashSet<OWLClass>();
+        Set<OWLClassExpression> owl_desc = prop.getRanges(ontology);
+        for (OWLClassExpression desc : owl_desc) {
+            if (!desc.isAnonymous()) {
+                owl_class.add(desc.asOWLClass());
+            }
+        }
+        return owl_class;
+    } // getRanges
+    
+    /**
+     * Returns the local class name
+     * @param cls
+     * @return 
+     */
+    public String getLocalClassName(OWLClass cls) {
+        return (cls.getIRI().toString().contains("#") ? cls.getIRI().toString().split("#")[1] : cls.getIRI().toString());
+    }
+    
+    /**
+     * Returns the local property name
+     * @param prop
+     * @return 
+     */
+    public String getLocalPropertyName(OWLProperty prop) {
+        return (prop.getIRI().toString().contains("#") ? prop.getIRI().toString().split("#")[1] : prop.getIRI().toString());
+    }
+
+
+
+        //Working on OWLAxioms
+    public void getProperty(OWLClass cls){
+        Set<OWLAxiom> s = cls.getReferencingAxioms(ontology);
+        for(OWLAxiom owlax : s){
+            System.out.println("The axiom is : "+owlax);
+        }
+    }
+
+    
+    /***********************************************************************************
+     * Main method for testing.
+     * 
+     * @param args
+     *            The command-line arguments.
+     * @throws IOException
+     */
+    public static void main(String[] args) throws IOException {
+        // load owl file
+        OntologyManager discoveryMgr = null;
+        long start = System.currentTimeMillis();
+        try {
+            //discoveryMgr = new OWLDiscoveryManager("camera.owl.rdf");
+            //discoveryMgr = new OWLDiscoveryManager("SUMO_Finance.owl");
+            //discoveryMgr = new OntologyManager("pizza_test.owl");
+            discoveryMgr = new OntologyManager("webServiceWithNewChanges.owl");
+        } catch (OWLOntologyCreationException e) {
+            e.printStackTrace();
+        }
+        long end = System.currentTimeMillis();
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        
+        // get concept class by name
+        start = System.currentTimeMillis();
+        //OWLClass test = discoveryMgr.getConceptClass("http://www.xfront.com/owl/ontologies/camera/#Money");
+        //OWLClass test = discoveryMgr.getConceptClass("http://www.co-ode.org/ontologies/pizza/pizza.owl#InterestingPizza");
+        //OWLClass test = discoveryMgr.getConceptClass("http://www.co-ode.org/ontologies/pizza/pizza.owl#Food");
+        OWLClass test = discoveryMgr.getConceptClass("http://purl.obolibrary.org/obo/webService.owl#Class_0006");
+        
+        /*end = System.currentTimeMillis();
+        System.out.println("test = " + test);
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        // get the super classes
+        start = System.currentTimeMillis();
+        Set<OWLClass> supers = discoveryMgr.getSuperClasses(test);
+        end = System.currentTimeMillis();
+        out.println("supers class size = " + supers.size());
+        for (OWLClass cls : supers) {
+            System.out.println("   sper cls = " + cls);
+        }
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        // get inferred super class
+        start = System.currentTimeMillis();
+        ArrayList<Set<OWLClass>> inferredSupers = discoveryMgr.getInferredSuperClasses(test);
+        end = System.currentTimeMillis();
+        int num = 0;
+        for (Set<OWLClass> clz : inferredSupers) {
+    		for (OWLClass c : clz){
+    			num++;
+    			out.println("   inferred super class = " + c);
+    		} // for
+    	} // for
+        out.println("inferred supers class size = " + num);
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+        
+        // get the sub classes
+        start = System.currentTimeMillis();
+        Set<OWLClass> subs = discoveryMgr.getSubClasses(test);
+        end = System.currentTimeMillis();
+        out.println("sub class size = " + subs.size());
+        for (OWLClass cls : subs) {
+            System.out.println("   sub cls = " + cls);
+        }
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        // get inferred super class
+        start = System.currentTimeMillis();
+        ArrayList<Set<OWLClass>> inferredSubs = discoveryMgr.getInferredSubClasses(test);
+        end = System.currentTimeMillis();
+        num = 0;
+        for (Set<OWLClass> clz : inferredSubs) {
+    		for (OWLClass c : clz){
+    			num++;
+    			out.println("   inferred sub class = " + c);
+    		} // for
+    	} // for
+        out.println("inferred sub class size = " + num);
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        // get the equivalent classes
+        start = System.currentTimeMillis();
+        Set<OWLClass> equivs = discoveryMgr.getEquivalentClasses(test);
+        end = System.currentTimeMillis();
+        out.println("equivs class size = " + equivs.size());
+        for (OWLClass cls : equivs) {
+            System.out.println("   equiv cls = " + cls);
+        }
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+        */
+
+
+
+        discoveryMgr.getProperty(test);
+
+        // getDataProperties of the class
+        /*start = System.currentTimeMillis();
+        Set<OWLDataProperty> dataProperties = discoveryMgr.getDataProperties(test);
+        end = System.currentTimeMillis();
+        out.println("data properties size = " + dataProperties.size());
+        for (OWLDataProperty objProp : dataProperties) {
+            System.out.println("DataProperty = " + objProp);
+        }
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        // getObjectProperties of the class
+        start = System.currentTimeMillis();
+        Set<OWLObjectProperty> objProperties = discoveryMgr.getObjectProperties(test);
+        end = System.currentTimeMillis();
+        out.println("object properties size = " + objProperties.size());
+
+        // Cardinality
+        for (OWLObjectProperty objProp : objProperties) {
+            System.out.println("   ObjectProperty = " + objProp);
+            // get the getCardinality of the object property and concept class
+            out.println("      class cardinality = " + discoveryMgr.getCardinality(objProp, test));
+        }
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        // getDomains of the class's object properties
+        start = System.currentTimeMillis();
+        for (OWLObjectProperty objProp : objProperties) {
+            System.out.println("ObjectProperty = " + objProp);
+            Set<OWLClass> domClazz = discoveryMgr.getDomains(objProp);
+            for (OWLClass cls : domClazz) {
+                System.out.println("   domain cls = " + cls);
+            }
+        }
+        end = System.currentTimeMillis();
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        // getRanges of the class's object properties
+        start = System.currentTimeMillis();
+        for (OWLObjectProperty objProp : objProperties) {
+            System.out.println("ObjectProperty = " + objProp);
+            Set<OWLClass> ranClazz = discoveryMgr.getRanges(objProp);
+            for (OWLClass cls : ranClazz) {
+                System.out.println("   range cls = " + cls);
+            }
+        }
+        end = System.currentTimeMillis();
+        System.out.println("latency = " + (end - start));
+        System.out.println();
+
+        // check the the class's object properties are functional or not
+        for (OWLObjectProperty objProp : objProperties) {
+            System.out.println("ObjectProperty = " + objProp);
+            System.out.println("   is functional ? : "
+                    + objProp.isFunctional(discoveryMgr.getOntology()));
+        }
+        System.out.println();
+
+        // check the the class's object properties are inverse functional or not
+        for (OWLObjectProperty objProp : objProperties) {
+            System.out.println("ObjectProperty = " + objProp);
+            System.out.println("   is inverse functional ? : "
+                    + objProp.isInverseFunctional(discoveryMgr.getOntology()));
+        }
+        System.out.println();
+        */
+        // print all class
+        //discoveryMgr.printClasses();
+
+    } // main
+} // OntoLoader
+

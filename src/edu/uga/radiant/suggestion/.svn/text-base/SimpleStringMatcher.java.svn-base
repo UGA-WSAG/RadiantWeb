@@ -1,0 +1,250 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+package edu.uga.radiant.suggestion;
+import edu.uga.radiant.ontology.OntologyHandler;
+import edu.uga.radiant.stringmetrics.CompareDefinition;
+import edu.uga.radiant.stringmetrics.CompareTerm;
+import edu.uga.radiant.stringmetrics.CompareTermDef;
+import edu.uga.radiant.stringmetrics.DiceCustome;
+import edu.uga.radiant.util.RadiantToolConfig;
+import edu.uga.radiant.util.Serializer;
+import edu.uga.radiant.util.SortMap;
+import edu.uga.radiant.wsdlparser.JDOMWSDLManager;
+import java.util.Map;
+import java.util.HashMap;
+import org.semanticweb.owlapi.apibinding.OWLManager;
+import org.semanticweb.owlapi.model.IRI;
+import org.semanticweb.owlapi.model.OWLClass;
+import org.semanticweb.owlapi.model.OWLOntology;
+import org.semanticweb.owlapi.model.OWLOntologyCreationException;
+import org.semanticweb.owlapi.model.OWLOntologyManager;
+import uk.ac.shef.wit.simmetrics.similaritymetrics.JaroWinkler;
+import java.util.Set;
+import java.io.File;
+import org.jdom.Document;
+import org.jdom.Element;
+import uk.ac.shef.wit.simmetrics.similaritymetrics.QGramsDistance;
+
+/**
+ *
+ * @author Chaitu
+ */
+
+
+public class SimpleStringMatcher {
+
+    private static String wsdlele;
+    
+    private static RadiantToolConfig config = new RadiantToolConfig();
+
+    public static Map<String,Double> getOpSimilarity(String wsdlEleName,String wsdlEleDoc, OWLOntology ontology) {
+        Map<String, Double> scor = new HashMap<String, Double>();
+        Map<String,Double> score = new HashMap<String,Double>();
+        JaroWinkler jw = new JaroWinkler();
+        GetOntologyConcepts test = new GetOntologyConcepts();
+        //OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLOntology ont = ontology;//manager.loadOntologyFromOntologyDocument(new File("/Users/Chaitu/OBI/webServiceWithNewChanges.owl"));
+        //OWLClass cls = ont.getOWLOntologyManager().getOWLDataFactory().getOWLClass(IRI.create(config.getOperationConcept()));
+        Set<OWLClass> lst = test.getOperationConcetps(ont);//.getParameterConcetps(ont);
+
+//                test.getOperationConcetps(ont);//getParameterConcetps(ont);//.getOperationConcetps(ont);
+        //QGramsDistance qgd = new QGramsDistance();
+        //System.out.println("The size is : "+lst.size());
+        for(OWLClass cl : lst){
+            
+            String clName = test.getLabel(cl, ont);
+            boolean isDescPresent = true;
+            String clsDesc = OntologyHandler.getOntologyConceptDescription(cl, ont);
+            if(clsDesc == null){
+                clsDesc = OntologyHandler.getOntologyDefinition(cl, ont);
+                isDescPresent = false;
+            }
+            
+            //Double d = new Double(jw.getSimilarity(wsdlEleName,clName));
+            
+            double labelScore = CompareTerm.getSimilarity(wsdlEleName, clName);//qgd.getSimilarity(wsdlEleNa`me,clName);
+            double descScore = CompareDefinition.getSimilarity(wsdlEleDoc, clsDesc);//qgd.getSimilarity(wsdlEleDoc, clsDesc);
+            double labeldescScore = CompareTermDef.getSimilarity(wsdlEleName, clsDesc);
+            double labeldescScore1 = CompareTermDef.getSimilarity(clName, wsdlEleDoc);
+            labeldescScore = (labeldescScore+labeldescScore1)/2;
+            
+            double descWeight = 0;
+            double labelWeight = 0;
+            double labeldescWeight = 0;
+            if(descScore>0.4){
+                descWeight = 0.8;
+                labelWeight = 0.1;
+                labeldescWeight = 0.1;
+            }
+            else{
+                descWeight = 0.6;
+                labelWeight = 0.2;
+                labeldescWeight = 0.2;
+            }
+            
+            Double totalScore = new Double((descWeight*descScore+labelWeight*labelScore+labeldescScore*labeldescWeight)/(descWeight+labelWeight+labeldescWeight));
+            //if(d > 0.6 || f1 > 0.6)
+            //    System.out.println(wsdlEleName+" - "+clName+" - "+f1+" "+d);
+            String term = clName+"**"+cl.getIRI().toString();
+            String ind_scores = "Term:"+clName+" - Labelscore:"+labelScore+" - descScore:"+descScore+" - labeldescScore:"+labeldescScore;
+            score.put(term, totalScore);
+            scor.put(ind_scores,totalScore);
+        }
+        score = SortMap.sortHashMap(score);
+        //scor = SortMap.sortHashMap(scor);
+        return score;
+    }
+
+    public static Map<String,Double> getParamSimilarity(String wsdlEleName,String wsdlEleDoc, OWLOntology ontology) {
+        Map<String, Double> scor = new HashMap<String, Double>();
+        HashMap<String,Double> suggestions = new HashMap<String,Double>();
+        JaroWinkler jw = new JaroWinkler();
+        GetOntologyConcepts test = new GetOntologyConcepts();
+//        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLOntology ont = ontology;//manager.loadOntologyFromOntologyDocument(new File("/Users/Chaitu/OBI/webServiceWithNewChanges.owl"));
+        OWLClass cls = ont.getOWLOntologyManager().getOWLDataFactory().getOWLClass(IRI.create(config.getParameterConcept()));
+        Set<OWLClass> lst = test.getParameterConcetps(ont);
+
+//      test.getOperationConcetps(ont);//getParameterConcetps(ont);//.getOperationConcetps(ont);
+        QGramsDistance qgd = new QGramsDistance();
+        //System.out.println("The size is : "+lst.size());
+        for(OWLClass cl : lst){
+            String clName = test.getLabel(cl, ont);
+            boolean isDescPresent = true;
+            String clsDesc = OntologyHandler.getOntologyConceptDescription(cl, ont);
+            
+            if(clsDesc == null){
+                clsDesc = OntologyHandler.getOntologyDefinition(cl, ont);
+                isDescPresent = false;
+            }
+            
+            Double d = new Double(jw.getSimilarity(wsdlEleName,clName));
+            float f1 = qgd.getSimilarity(wsdlEleName,clName);
+            double labelScore = CompareTerm.getSimilarity(wsdlEleName, clName);
+            double descScore = CompareDefinition.getSimilarity(wsdlEleDoc, clsDesc);
+            double labeldescScore = CompareTermDef.getSimilarity(wsdlEleName, clsDesc);
+            if(clName.equalsIgnoreCase("caption")){
+                System.out.println();
+            }
+            double labeldescScore1 = CompareTermDef.getSimilarity(clName, wsdlEleDoc);
+            
+            labeldescScore = (labeldescScore + labeldescScore1)/2;
+//            float labelScore = qgd.getSimilarity(wsdlEleName, clName);
+//            float descScore = qgd.getSimilarity(wsdlEleDoc, clsDesc); 
+            //if(f > 0.6 || f1 > 0.6)
+                //System.out.println(wsdlEleName+" - "+clName+" - "+f1+" "+d);
+            //String term = clName+" "+cl.getIRI().toString();
+            
+            double descWeight = 0;
+            double labelWeight = 0;
+            double labeldescWeight = 0;
+            /*if(isDescPresent){
+                descWeight = 0.8;
+                labelWeight = 0.2;
+            }
+            else{
+                descWeight = 0.5;
+                labelWeight = 0.5;
+            }*/
+            
+            if(descScore > 0.4){
+                descWeight = 0.7;
+                labelWeight = 0.1;
+                labeldescWeight = 0.2;
+            }
+            else{
+                descWeight = 0.6;
+                labelWeight = 0.2;
+                labeldescWeight = 0.2;
+            }
+            
+            
+            Double totalScore = new Double((descWeight*descScore+labelWeight*labelScore+labeldescScore*labeldescWeight)/(descWeight+labelWeight+labeldescWeight));
+            String ontoTerm = clName+"**"+cl.getIRI().toString();
+            suggestions.put(ontoTerm, totalScore);
+            String ind_scores = "Term:"+clName+" - LabelScore: "+labelScore+" - descScore:"+descScore+" - labeldescScore: "+labeldescScore;
+            scor.put(ind_scores,totalScore);
+
+        }
+        suggestions = SortMap.sortHashMap(suggestions);
+        //scor = SortMap.sortHashMap(scor);
+        return suggestions;
+        //return scor;
+    }
+    
+    
+    /**
+     * Given the parameter term of the WSDL return the scores of similarity for all the parameter terms in the Ontology
+     * Parameter terms from the ontology are all the sub classes of the term "parameter.concept" in 
+     * RaidantProperties.properties file.
+     * @param param : wsdl parameter to find the similarity for
+     * @param ont : Ontology that needs to be suggested
+     * @return 
+     */
+    public Map<String,Double> getParamDefinitionSimilarity(String param,OWLOntology ont){
+        HashMap<String, Double> suggestions = new HashMap<String,Double>();
+        Set<OWLClass> params = OntologyHandler.getParameterConcetps(ont);
+        
+        String wsdlurl = config.getWsdlUrl();
+        Document doc = Serializer.deserializeDoc(wsdlurl);
+        JDOMWSDLManager wsdlManager = new JDOMWSDLManager(doc);
+        Element ele = wsdlManager.getElement(param);
+        String wsdlParamDef = wsdlManager.getDocumentation(ele);
+        
+        //DiceCustome dice = new DiceCustome();
+        
+        for(OWLClass cls : params){
+            String ontTermDef = OntologyHandler.getOntologyDefinition(cls, ont);//getDefinition(cls, ont);
+            //if(ontTermDef == null)
+            //{
+              // Set<OWLOntology> ontologies = ont.getOWLOntologyManager().getOntologies();
+               //System.out.println("Ontologies : "+ontologies);
+               // for(OWLOntology o : ontologies)
+                //{
+                //    if(ontTermDef == null){
+                //        ontTermDef = OntologyHandler.getDefinition(cls, o);
+                //    }
+                //}
+                //System.out.println("Def : "+ontTermDef);
+                if(ontTermDef == null)
+                    suggestions.put(OntologyHandler.getLabel(cls, ont), 0.0);
+                else
+                {
+                    double score = DiceCustome.computeScore(wsdlParamDef, ontTermDef);
+                    suggestions.put(OntologyHandler.getLabel(cls, ont), score);
+                }
+                //System.out.println("checking : "+ont.containsClassInSignature(c.getIRI()));
+                //System.exit(0);
+    //        }
+          //  }
+        //retrun suggestions;
+        }
+        
+        
+        suggestions = SortMap.sortHashMap(suggestions);
+        return suggestions;
+    }
+    
+    public static void main(String [] args) throws OWLOntologyCreationException{
+        SimpleStringMatcher sim = new SimpleStringMatcher();
+        //Map<String,Float> scores = sim.getParamSimilarity("alignments");
+        //Set<String> keys = scores.keySet();
+        //for(String key : keys){
+            //if(scores.get(key)>0.9)
+               // System.out.println(key+" - "+scores.get(key));
+        //}
+        //System.out.println("The term is : ");
+        OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+        OWLOntology ont = manager.loadOntologyFromOntologyDocument(new File("/Users/Chaitu/OBI/webServiceWithNewChanges.owl"));
+        
+        Map<String,Double> sug = sim.getParamDefinitionSimilarity("alignments", ont);
+        Set<String> keys = sug.keySet();
+        for(String key : keys){
+            //if(scores.get(key)>0.9)
+            System.out.println(key+" - "+sug.get(key));
+        }
+    }
+}
