@@ -1,0 +1,10 @@
+operation.concept=http://purl.obolibrary.org/obo/IAO_0000005
+parameter.concept=http://purl.obolibrary.org/obo/IAO_0000030
+#http://www.ifomis.org/bfo/1.1/snap#GenericallyDependentContinuant
+definition.uri=http://purl.obolibrary.org/obo/IAO_0000115
+description.uri=http://purl.org/dc/elements/1.1/description
+wsdl.url=/Users/Chaitu/OBI/wsdl.ser
+temp.location=/Users/Chaitu/OBI/temp/
+db.driver=org.exist.xmldb.DatabaseImpl
+exist.configuraion=/Users/Chaitu/NetBeansProjects/Radiant/eXistdb
+stopword.path=/Users/Chaitu/NetBeansProjects/Radiant/src/java/edu/uga/radiant/util/stop.txt
